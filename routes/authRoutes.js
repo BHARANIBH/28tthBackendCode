@@ -25,8 +25,8 @@ router.post('/send-otp', async (req, res) => {
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
     await OTP.findOneAndUpdate(
-      { phone, role },
-      { otp, expiresAt, attempts: 0, isVerified: false },
+      { phone },
+      { $set: { phone, otp, expiresAt, attempts: 0, isVerified: false } },
       { upsert: true, new: true }
     );
 
