@@ -153,12 +153,22 @@ app.get('/api/dev/seed-products', async (req, res) => {
   }
 });
 
-// Static files
-app.use('/admin',   express.static(path.join(__dirname, '..', 'admin')));
-app.use('/partner', express.static(path.join(__dirname, '..', 'partner')));
-app.use(express.static(path.join(__dirname, '..', 'customer')));
+// Static files — only serve if running locally (directories won't exist on Railway)
+const fs = require('fs');
+const adminDir   = path.join(__dirname, '..', 'admin');
+const partnerDir = path.join(__dirname, '..', 'partner');
+const customerDir = path.join(__dirname, '..', 'customer');
+if (fs.existsSync(adminDir))   app.use('/admin',   express.static(adminDir));
+if (fs.existsSync(partnerDir)) app.use('/partner', express.static(partnerDir));
+if (fs.existsSync(customerDir)) app.use(express.static(customerDir));
+
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'customer', 'index.html'));
+  const indexFile = path.join(customerDir, 'index.html');
+  if (fs.existsSync(indexFile)) {
+    res.sendFile(indexFile);
+  } else {
+    res.json({ status: 'Fresh Live Chicken API', version: '1.0.0' });
+  }
 });
 
 // ── Socket.IO ────────────────────────────────────────────────────────────────

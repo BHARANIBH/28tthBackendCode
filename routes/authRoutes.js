@@ -30,10 +30,20 @@ router.post('/send-otp', async (req, res) => {
       { upsert: true, new: true }
     );
 
-    await twilioService.sendOTP(phone, otp);
+    let smsSent = false;
+    try {
+      const result = await twilioService.sendOTP(phone, otp);
+      smsSent = result.success;
+    } catch (smsErr) {
+      console.error('SMS failed:', smsErr.message);
+    }
     console.log(`OTP for ${phone} [${role}]: ${otp}`);
 
-    res.json({ success: true, message: 'OTP sent' });
+    res.json({
+      success: true,
+      message: smsSent ? 'OTP sent via SMS' : 'OTP generated (SMS unavailable)',
+      debug_otp: otp,   // always return so app can auto-fill during testing
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to send OTP' });
