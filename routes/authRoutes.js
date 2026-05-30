@@ -17,37 +17,35 @@ function generateToken(payload) {
 // POST /api/auth/send-otp
 // body: { phone, role: 'customer' | 'shop' | 'delivery' }
 router.post('/send-otp', async (req, res) => {
+  const { phone } = req.body;
+  if (!phone) return res.status(400).json({ success: false, message: 'Phone required' });
+
+  const otp = generateOTP();
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+  // Save OTP to DB — non-fatal if it fails
   try {
-    const { phone, role = 'customer' } = req.body;
-    if (!phone) return res.status(400).json({ error: 'Phone required' });
-
-    const otp = generateOTP();
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
-
-    await OTP.findOneAndUpdate(
-      { phone },
-      { $set: { phone, otp, expiresAt, attempts: 0, isVerified: false } },
-      { upsert: true, new: true }
-    );
-
-    let smsSent = false;
-    try {
-      const result = await twilioService.sendOTP(phone, otp);
-      smsSent = result.success;
-    } catch (smsErr) {
-      console.error('SMS failed:', smsErr.message);
-    }
-    console.log(`OTP for ${phone} [${role}]: ${otp}`);
-
-    res.json({
-      success: true,
-      message: smsSent ? 'OTP sent via SMS' : 'OTP generated (SMS unavailable)',
-      debug_otp: otp,   // always return so app can auto-fill during testing
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to send OTP' });
+    await OTP.deleteOne({ phone });
+    await OTP.create({ phone, otp, expiresAt });
+  } catch (dbErr) {
+    console.error('OTP DB error (non-fatal):', dbErr.message);
   }
+
+  // Send SMS — non-fatal if it fails
+  let smsSent = false;
+  try {
+    const result = await twilioService.sendOTP(phone, otp);
+    smsSent = result.success;
+  } catch (smsErr) {
+    console.error('SMS failed (non-fatal):', smsErr.message);
+  }
+
+  console.log(`OTP for ${phone}: ${otp}`);
+  return res.json({
+    success: true,
+    message: smsSent ? 'OTP sent via SMS' : 'OTP generated',
+    debug_otp: otp,
+  });
 });
 
 // POST /api/auth/verify-otp
