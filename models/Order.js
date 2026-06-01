@@ -36,10 +36,17 @@ const orderSchema = new mongoose.Schema({
   couponCode:    { type: String, default: '' },
   totalPrice:    { type: Number, required: true },
 
-  commissionRate:   { type: Number, default: 10 },
-  commissionAmount: { type: Number, default: 0 },
-  shopEarnings:     { type: Number, default: 0 },
-  deliveryEarnings: { type: Number, default: 20 },
+  // ── Commission / Settlement fields ──────────────────────────────
+  orderAmount:          { type: Number, default: 0 },  // = subtotal (product total only)
+  commissionPercentage: { type: Number, default: 10 }, // shop's commission rate (10-15%)
+  commissionAmount:     { type: Number, default: 0 },  // orderAmount * commissionPercentage / 100
+  platformFee:          { type: Number, default: 0 },  // same as commissionAmount (marketplace fee)
+  shopSettlementAmount: { type: Number, default: 0 },  // orderAmount - commissionAmount
+  deliveryEarnings:     { type: Number, default: 20 }, // platform share of delivery charge
+
+  // Legacy aliases (kept for backward compatibility)
+  commissionRate:       { type: Number, default: 10 },
+  shopEarnings:         { type: Number, default: 0 },
 
   paymentMethod:     { type: String, enum: ['razorpay', 'cod'], default: 'cod' },
   paymentStatus:     { type: String, enum: ['pending', 'paid', 'failed'], default: 'pending' },
@@ -95,9 +102,19 @@ orderSchema.pre('save', function (next) {
   if (!this.orderId) {
     this.orderId = 'ORD' + Date.now();
   }
-  if (!this.commissionAmount && this.subtotal) {
-    this.commissionAmount = Math.round((this.subtotal * this.commissionRate) / 100);
-    this.shopEarnings = this.subtotal - this.commissionAmount;
+  // Always set orderAmount = subtotal (product total only, excludes delivery)
+  if (this.subtotal) {
+    this.orderAmount = this.subtotal;
+  }
+  // Calculate commission on product subtotal only (not delivery charge)
+  const pct = this.commissionPercentage || this.commissionRate || 10;
+  if (this.orderAmount) {
+    this.commissionAmount     = Math.round((this.orderAmount * pct) / 100);
+    this.platformFee          = this.commissionAmount;
+    this.shopSettlementAmount = this.orderAmount - this.commissionAmount;
+    // Legacy aliases
+    this.commissionRate       = pct;
+    this.shopEarnings         = this.shopSettlementAmount;
   }
   next();
 });

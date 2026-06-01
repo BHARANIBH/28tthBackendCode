@@ -151,15 +151,34 @@ async function dispatchToShop(order, nearbyShops, attemptIndex = 0) {
 async function shopAccepted(orderId, shopId) {
   clearTimer(orderId);
 
+  // Fetch shop to get its commission rate (default 10% if not set)
+  const shop = await Shop.findById(shopId).select('commissionRate shopName').lean();
+  const commissionPercentage = Math.min(
+    Math.max(shop?.commissionRate || 10, 10), 15  // clamp between 10% and 15%
+  );
+  const orderDoc     = await Order.findById(orderId).lean();
+  const orderAmount  = orderDoc?.subtotal || 0;
+  const commissionAmount     = Math.round((orderAmount * commissionPercentage) / 100);
+  const shopSettlementAmount = orderAmount - commissionAmount;
+
   const order = await Order.findByIdAndUpdate(
     orderId,
     {
-      orderStatus:    'confirmed',
-      dispatchStatus: 'accepted',
+      shopId,
+      orderStatus:          'confirmed',
+      dispatchStatus:       'accepted',
+      orderAmount,
+      commissionPercentage,
+      commissionRate:       commissionPercentage,
+      commissionAmount,
+      platformFee:          commissionAmount,
+      shopSettlementAmount,
+      shopEarnings:         shopSettlementAmount,
       $set: { 'dispatchAttempts.$[elem].status': 'accepted' },
     },
     {
       new: true,
+      runValidators: false,
       arrayFilters: [{ 'elem.shopId': shopId, 'elem.status': 'notified' }],
     }
   );

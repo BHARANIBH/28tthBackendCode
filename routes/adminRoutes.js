@@ -141,6 +141,107 @@ router.get('/customers', adminAuth, async (req, res) => {
   }
 });
 
+// ── GET /api/admin/settlements — Commission & settlement report ────
+// Query params: ?from=2024-01-01&to=2024-12-31&shopId=xxx
+router.get('/settlements', adminAuth, async (req, res) => {
+  try {
+    const { from, to, shopId } = req.query;
+    const match = {
+      orderStatus:  { $nin: ['cancelled', 'pending'] },
+      shopId:       { $ne: null, $exists: true },
+    };
+    if (from || to) {
+      match.createdAt = {};
+      if (from) match.createdAt.$gte = new Date(from);
+      if (to)   match.createdAt.$lte = new Date(to + 'T23:59:59');
+    }
+    if (shopId) match.shopId = require('mongoose').Types.ObjectId(shopId);
+
+    // Per-shop aggregation
+    const shopSettlements = await Order.aggregate([
+      { $match: match },
+      { $group: {
+          _id:              '$shopId',
+          totalOrders:      { $sum: 1 },
+          grossSales:       { $sum: '$orderAmount' },
+          commissionTotal:  { $sum: '$commissionAmount' },
+          netPayable:       { $sum: '$shopSettlementAmount' },
+          avgCommissionPct: { $avg: '$commissionPercentage' },
+          deliveryCharges:  { $sum: '$deliveryCharge' },
+      }},
+      { $lookup: {
+          from:         'shops',
+          localField:   '_id',
+          foreignField: '_id',
+          as:           'shop',
+      }},
+      { $unwind: { path: '$shop', preserveNullAndEmpty: true } },
+      { $project: {
+          shopName:        { $ifNull: ['$shop.shopName', 'Unknown Shop'] },
+          shopPhone:       '$shop.phone',
+          currentCommissionRate: '$shop.commissionRate',
+          totalOrders:     1,
+          grossSales:      1,
+          commissionTotal: 1,
+          netPayable:      1,
+          avgCommissionPct:{ $round: ['$avgCommissionPct', 2] },
+          deliveryCharges: 1,
+      }},
+      { $sort: { grossSales: -1 } },
+    ]);
+
+    // Platform-wide totals
+    const totals = shopSettlements.reduce((acc, s) => ({
+      totalOrders:     acc.totalOrders     + s.totalOrders,
+      grossSales:      acc.grossSales      + s.grossSales,
+      commissionTotal: acc.commissionTotal + s.commissionTotal,
+      netPayable:      acc.netPayable      + s.netPayable,
+    }), { totalOrders: 0, grossSales: 0, commissionTotal: 0, netPayable: 0 });
+
+    res.json({ success: true, settlements: shopSettlements, totals });
+  } catch (err) {
+    console.error('[settlements]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/admin/settlements/:shopId — single shop detail ────────
+router.get('/settlements/:shopId', adminAuth, async (req, res) => {
+  try {
+    const orders = await Order.find({
+      shopId:      req.params.shopId,
+      orderStatus: { $nin: ['cancelled', 'pending'] },
+    })
+    .select('orderId createdAt orderAmount commissionPercentage commissionAmount shopSettlementAmount deliveryCharge totalPrice orderStatus customerName')
+    .sort({ createdAt: -1 })
+    .limit(100)
+    .lean();
+
+    res.json({ success: true, orders });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── PUT /api/admin/shops/:shopId/commission — update commission rate ─
+router.put('/shops/:shopId/commission', adminAuth, async (req, res) => {
+  try {
+    const { commissionRate } = req.body;
+    if (commissionRate < 10 || commissionRate > 15) {
+      return res.status(400).json({ error: 'Commission must be between 10% and 15%' });
+    }
+    const shop = await Shop.findByIdAndUpdate(
+      req.params.shopId,
+      { commissionRate },
+      { new: true, runValidators: false }
+    );
+    if (!shop) return res.status(404).json({ error: 'Shop not found' });
+    res.json({ success: true, shop: { _id: shop._id, shopName: shop.shopName, commissionRate: shop.commissionRate } });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/admin/products
 router.get('/products', async (req, res) => {
   try {
