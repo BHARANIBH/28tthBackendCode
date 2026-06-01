@@ -71,9 +71,14 @@ const orderSchema = new mongoose.Schema({
   notes:        { type: String, default: '' },
 
   // Live chicken cutting feature
-  liveRequested: { type: Boolean, default: false },
-  isLive:        { type: Boolean, default: false },
-  liveStreamUrl: { type: String, default: '' },
+  liveRequested:  { type: Boolean, default: false },
+  isLive:         { type: Boolean, default: false },
+  liveStreamUrl:  { type: String, default: '' },
+  // Agora live
+  agoraChannel:   { type: String, default: '' },
+  agoraAppId:     { type: String, default: '' },
+  liveStartedAt:  { type: Date },
+  liveEndedAt:    { type: Date },
 
   // Dispatch engine tracking (Swiggy-style waterfall)
   dispatchStatus: {

@@ -187,17 +187,20 @@ async function shopAccepted(orderId, shopId) {
 
   console.log(`[Dispatch] Order ${order.orderId} — ACCEPTED by shop ${shopId}`);
 
-  emitToCustomer(orderId, 'order:confirmed', {
-    orderId,
-    status:  'confirmed',
-    message: 'Your order has been accepted! Preparing now…',
-  });
-
-  emitToCustomer(orderId, 'order:status', {
-    orderId,
-    status: 'confirmed',
+  const statusPayload = {
+    orderId:       order._id,
+    customOrderId: order.orderId,
+    status:        'confirmed',
+    orderStatus:   'confirmed',
     order,
-  });
+  };
+  // Emit to both room IDs
+  if (io) {
+    io.to(`order:${order._id}`).emit('order:status', statusPayload);
+    if (order.orderId) io.to(`order:${order.orderId}`).emit('order:status', statusPayload);
+    io.to(`order:${order._id}`).emit('order:confirmed', { orderId: order._id, status: 'confirmed', message: 'Your order has been accepted! Preparing now…' });
+    if (order.orderId) io.to(`order:${order.orderId}`).emit('order:confirmed', { orderId: order._id, status: 'confirmed', message: 'Your order has been accepted! Preparing now…' });
+  }
 
   // Now assign a delivery rider
   await dispatchToRider(order);

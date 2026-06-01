@@ -262,9 +262,20 @@ router.put('/orders/:orderId', authMiddleware, async (req, res) => {
     }
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
 
-    // Broadcast to customer tracking screen via socket
+    // Broadcast to BOTH room IDs so customer always gets real-time update
+    // Customer may have joined using MongoDB _id OR custom orderId string
     if (io) {
-      io.to(`order:${order._id}`).emit('order:status', { orderId: order._id, status: normalised, order });
+      const payload = {
+        orderId:       order._id,
+        customOrderId: order.orderId,
+        status:        normalised,
+        orderStatus:   normalised,
+        order,
+      };
+      io.to(`order:${order._id}`).emit('order:status', payload);
+      if (order.orderId) {
+        io.to(`order:${order.orderId}`).emit('order:status', payload);
+      }
     }
     res.json({ success: true, order });
   } catch (err) {

@@ -263,6 +263,97 @@ router.get('/live-requests/pending', auth(['shop']), async (req, res) => {
   }
 });
 
+// ── POST /api/orders/:orderId/agora-live ── Customer requests Agora live ──
+router.post('/:orderId/agora-live', auth(['customer']), async (req, res) => {
+  try {
+    const order = await findOrder(req.params.orderId);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    const AGORA_APP_ID = process.env.AGORA_APP_ID || 'aeace81b49e7429daa9a79686d42a24a';
+    // Channel name = unique per order, short & clean
+    const channelName = `flc${String(order.orderId || order._id).replace(/[^a-zA-Z0-9]/g, '').slice(-12)}`;
+
+    // Save channel to order
+    await Order.findByIdAndUpdate(order._id,
+      { liveRequested: true, agoraChannel: channelName, agoraAppId: AGORA_APP_ID },
+      { runValidators: false }
+    );
+
+    // Notify partner shop via socket
+    if (io && order.shopId) {
+      io.to(`shop:${order.shopId}`).emit('live:agora-requested', {
+        orderId:      order._id,
+        customOrderId:order.orderId,
+        customerName: order.customerName,
+        channel:      channelName,
+        appId:        AGORA_APP_ID,
+      });
+    }
+
+    res.json({
+      success:  true,
+      appId:    AGORA_APP_ID,
+      channel:  channelName,
+      token:    null,   // App ID only mode — no token needed
+      uid:      Math.floor(Math.random() * 90000) + 10000,
+    });
+  } catch (err) {
+    console.error('[agora-live]', err);
+    res.status(500).json({ error: 'Failed to start live session' });
+  }
+});
+
+// ── POST /api/orders/:orderId/agora-start ── Partner starts broadcasting ──
+router.post('/:orderId/agora-start', auth(['shop']), async (req, res) => {
+  try {
+    const order = await findOrder(req.params.orderId);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    await Order.findByIdAndUpdate(order._id,
+      { isLive: true, liveStartedAt: new Date() },
+      { runValidators: false }
+    );
+
+    const payload = {
+      channel: order.agoraChannel,
+      appId:   order.agoraAppId || process.env.AGORA_APP_ID || 'aeace81b49e7429daa9a79686d42a24a',
+      uid:     Math.floor(Math.random() * 90000) + 10000,
+    };
+
+    // Notify customer — emit to both room IDs
+    if (io) {
+      io.to(`order:${order._id}`).emit('live:agora-ready', payload);
+      if (order.orderId) io.to(`order:${order.orderId}`).emit('live:agora-ready', payload);
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed' });
+  }
+});
+
+// ── POST /api/orders/:orderId/agora-end ── End Agora live session ──
+router.post('/:orderId/agora-end', auth(['shop', 'customer']), async (req, res) => {
+  try {
+    const order = await findOrder(req.params.orderId);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    await Order.findByIdAndUpdate(order._id,
+      { isLive: false, liveEndedAt: new Date() },
+      { runValidators: false }
+    );
+
+    if (io) {
+      io.to(`order:${order._id}`).emit('live:agora-ended', {});
+      if (order.orderId) io.to(`order:${order.orderId}`).emit('live:agora-ended', {});
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed' });
+  }
+});
+
 // ── POST /api/orders/:orderId/request-live ──────────────────────
 router.post('/:orderId/request-live', auth(['customer']), async (req, res) => {
   try {
