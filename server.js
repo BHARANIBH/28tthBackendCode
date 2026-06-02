@@ -103,6 +103,20 @@ app.get('/api/dev/seed-shops', async (req, res) => {
   }
 });
 
+// ── Dev endpoint — clear all orders (test reset) ─────────────────────────────
+app.get('/api/dev/clear-orders', async (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(403).json({ error: 'Not available in production' });
+  }
+  try {
+    const Order = require('./models/Order');
+    const result = await Order.deleteMany({});
+    res.json({ success: true, deleted: result.deletedCount, message: 'All orders cleared ✅' });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // ── Dev seed endpoint — products ──────────────────────────────────────────────
 app.get('/api/dev/seed-products', async (req, res) => {
   if (process.env.NODE_ENV === 'production') {

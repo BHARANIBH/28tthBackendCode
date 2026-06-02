@@ -198,6 +198,8 @@ async function shopAccepted(orderId, shopId) {
   if (io) {
     io.to(`order:${order._id}`).emit('order:status', statusPayload);
     if (order.orderId) io.to(`order:${order.orderId}`).emit('order:status', statusPayload);
+    // Notify partner shop to refresh dashboard
+    io.to(`shop:${shopId}`).emit('order:updated', { order });
     io.to(`order:${order._id}`).emit('order:confirmed', { orderId: order._id, status: 'confirmed', message: 'Your order has been accepted! Preparing now…' });
     if (order.orderId) io.to(`order:${order.orderId}`).emit('order:confirmed', { orderId: order._id, status: 'confirmed', message: 'Your order has been accepted! Preparing now…' });
   }

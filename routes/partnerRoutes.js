@@ -276,6 +276,10 @@ router.put('/orders/:orderId', authMiddleware, async (req, res) => {
       if (order.orderId) {
         io.to(`order:${order.orderId}`).emit('order:status', payload);
       }
+      // Notify partner dashboard to refresh orders list
+      if (order.shopId) {
+        io.to(`shop:${order.shopId}`).emit('order:updated', { order });
+      }
     }
     res.json({ success: true, order });
   } catch (err) {
